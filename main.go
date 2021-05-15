@@ -11,16 +11,15 @@ import (
 	"golang.org/x/oauth2/twitch"
 	"os"
 	"strings"
+	"time"
 )
-
-func init() {
-	log.SetLevel(log.DebugLevel)
-}
 
 func main() {
 	clientId := flag.String("client-id", "", "Twitch helixClient ID")
 	clientSecret := flag.String("client-secret", "", "Twitch helixClient secret")
 	esUrl := flag.String("elasticsearch-url", "http://localhost:9200", "Comma separated list of url of elasticsearch")
+	esIndex := flag.String("elasticsearch-index", "streams", "Elasticsearch index to use")
+	verbose := flag.Bool("verbose", false, "Enable verbose mode")
 	flag.Parse()
 	if *clientId == "" || *clientSecret == "" {
 		fmt.Println("Twitch Surveillance")
@@ -28,14 +27,27 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
+	if *verbose {
+		log.SetLevel(log.DebugLevel)
+	}
 	streamDB := newStreamDB(strings.Split(*esUrl, ","))
 	helixClient := newHelixClient(*clientId, *clientSecret)
+	for next := range time.Tick(30 * time.Second) {
+		err := pollStream(helixClient, streamDB, esIndex)
+		if err != nil {
+			log.Errorln(err)
+		}
+		log.Infof("Polling is done. Waiting unil %v", next)
+	}
+}
+
+func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string) error {
 	streams, err := helixClient.GetStreams(&helix.StreamsParams{First: 100, Language: []string{"fr"}})
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	if streams.StatusCode != 200 {
-		log.Fatalln(streams.ErrorMessage)
+		return err
 	}
 	log.Debugf("Got %v streams\n", len(streams.Data.Streams))
 	stored := 0
@@ -43,9 +55,9 @@ func main() {
 		log.Debugf("%+v\n", stream)
 		streamLog := log.WithField("title", stream.Title).WithField("User", stream.UserName)
 		streamLog.Debugln("Storing stream in DB.")
-		indexStream, err := streamDB.IndexStream(stream)
+		indexStream, err := streamDB.IndexStream(stream, *esIndex)
 		if err != nil {
-			log.Fatalln(err)
+			return err
 		}
 		if indexStream.IsError() {
 			log.WithField("statuscode", indexStream.StatusCode).Fatalf("%+v\n", indexStream)
@@ -54,6 +66,7 @@ func main() {
 		stored++
 	}
 	log.Infof("Stored %v data points in DB\n", stored)
+	return nil
 }
 
 func newHelixClient(clientId string, clientSecret string) *helix.Client {

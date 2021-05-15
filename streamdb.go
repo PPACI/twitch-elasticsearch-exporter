@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-const (
-	esIndex = "streams"
-)
-
 type indexResult struct {
 	*esapi.Response
 	Body indexBodyResult
@@ -34,13 +30,16 @@ type timeStream struct {
 	Timestamp time.Time `json:"@timestamp"`
 }
 
-func (s streamDB) IndexStream(stream helix.Stream) (*indexResult, error) {
+// IndexStream save a stream to the specified Elasticsearch Index
+// This function will add a @timestamp property to the given stream before indexing it.
+// This make it compatible with the elasticsearch data stream model.
+func (s streamDB) IndexStream(stream helix.Stream, index string) (*indexResult, error) {
 	ts := timeStream{stream, time.Now()}
 	body, err := json.Marshal(ts)
 	if err != nil {
 		return &indexResult{}, err
 	}
-	response, err := s.Index(esIndex, strings.NewReader(string(body)))
+	response, err := s.Index(index, strings.NewReader(string(body)))
 	if err != nil {
 		return &indexResult{}, err
 	}
