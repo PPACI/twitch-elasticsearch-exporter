@@ -19,3 +19,6 @@ twitch-surveillance
 #IntelliJ
 .idea
 *.iml
+
+# Private deployment
+.deploy
