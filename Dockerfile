@@ -13,4 +13,4 @@ RUN apt update && apt install -yq ca-certificates
 
 COPY --from=builder /app/twitch-surveillance /usr/local/bin/twitch-surveillace
 
-ENTRYPOINT ["twitch-sql-exporter"]
+ENTRYPOINT ["twitch-surveillance"]
