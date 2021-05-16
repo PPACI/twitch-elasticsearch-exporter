@@ -11,6 +11,6 @@ RUN go build -o twitch-surveillance .
 FROM debian:buster-slim
 RUN apt update && apt install -yq ca-certificates
 
-COPY --from=builder /app/twitch-surveillace /usr/local/bin/twitch-surveillace
+COPY --from=builder /app/twitch-surveillance /usr/local/bin/twitch-surveillace
 
 ENTRYPOINT ["twitch-sql-exporter"]
