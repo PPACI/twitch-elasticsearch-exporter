@@ -17,6 +17,7 @@ import (
 func main() {
 	clientId := flag.String("client-id", "", "Twitch helixClient ID")
 	clientSecret := flag.String("client-secret", "", "Twitch helixClient secret")
+	language := flag.String("twitch-language", "fr", "Code of the twitch language to poll like fr, en")
 	esUrl := flag.String("elasticsearch-url", "http://localhost:9200", "Comma separated list of url of elasticsearch")
 	esIndex := flag.String("elasticsearch-index", "streams", "Elasticsearch index to use")
 	verbose := flag.Bool("verbose", false, "Enable verbose mode")
@@ -30,10 +31,16 @@ func main() {
 	if *verbose {
 		log.SetLevel(log.DebugLevel)
 	}
+	log.Debugln("Init StreamDB")
 	streamDB := newStreamDB(strings.Split(*esUrl, ","))
+	log.Debugln("Init Helix Client")
 	helixClient := newHelixClient(*clientId, *clientSecret)
+	log.Debugln("Start Polling Loop")
+	if err := pollStream(helixClient, streamDB, esIndex, *language); err != nil {
+		log.Errorln(err)
+	}
 	for next := range time.Tick(30 * time.Second) {
-		err := pollStream(helixClient, streamDB, esIndex)
+		err := pollStream(helixClient, streamDB, esIndex, *language)
 		if err != nil {
 			log.Errorln(err)
 		}
@@ -41,8 +48,8 @@ func main() {
 	}
 }
 
-func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string) error {
-	streams, err := helixClient.GetStreams(&helix.StreamsParams{First: 100, Language: []string{"fr"}})
+func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, language string) error {
+	streams, err := helixClient.GetStreams(&helix.StreamsParams{First: 100, Language: []string{language}})
 	if err != nil {
 		return err
 	}
@@ -54,7 +61,7 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string) 
 	for _, stream := range streams.Data.Streams {
 		log.Debugf("%+v\n", stream)
 		streamLog := log.WithField("title", stream.Title).WithField("User", stream.UserName)
-		streamLog.Debugln("Storing stream in DB.")
+		streamLog.Debugln("Indexing to DB")
 		indexStream, err := streamDB.IndexStream(stream, *esIndex)
 		if err != nil {
 			return err
@@ -62,7 +69,8 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string) 
 		if indexStream.IsError() {
 			log.WithField("statuscode", indexStream.StatusCode).Fatalf("%+v\n", indexStream)
 		}
-		streamLog.WithField("Id", indexStream.Body.Id).Debugln("Stored stream in DB.")
+		fields := log.Fields{"Id": indexStream.Body.Id, "Index": indexStream.Body.Index}
+		streamLog.WithFields(fields).Debugln("Stored stream in DB.")
 		stored++
 	}
 	log.Infof("Stored %v data points in DB\n", stored)

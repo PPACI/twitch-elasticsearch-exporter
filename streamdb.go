@@ -2,12 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/nicklaw5/helix"
+	log "github.com/sirupsen/logrus"
 	"strings"
 	"time"
 )
+
+var indexSuffix string
 
 type indexResult struct {
 	*esapi.Response
@@ -30,10 +34,27 @@ type timeStream struct {
 	Timestamp time.Time `json:"@timestamp"`
 }
 
+func init() {
+	setIndexSuffix()
+	go func() {
+		for range time.Tick(5 * time.Minute) {
+			setIndexSuffix()
+		}
+	}()
+}
+
+func setIndexSuffix() {
+	now := time.Now()
+	indexSuffix = fmt.Sprintf("%v-%d", now.Year(), now.Month())
+}
+
 // IndexStream save a stream to the specified Elasticsearch Index
 // This function will add a @timestamp property to the given stream before indexing it.
 // This make it compatible with the elasticsearch data stream model.
+// Year and Month will be appended to index name such as streams-2021-03
 func (s streamDB) IndexStream(stream helix.Stream, index string) (*indexResult, error) {
+	index = index + "-" + indexSuffix
+	log.Debugln("Indexing stream to", index)
 	ts := timeStream{stream, time.Now()}
 	body, err := json.Marshal(ts)
 	if err != nil {
