@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "**"
 
 jobs:
   docker:
@@ -38,7 +36,7 @@ jobs:
         with:
           platforms: linux/amd64, linux/arm64
           push: true
-          tags: pierrepaci/twitch-surveillance:latest,pierrepaci/twitch-surveillance:$GITHUB_REF
+          tags: pierrepaci/twitch-surveillance:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache  
       -
