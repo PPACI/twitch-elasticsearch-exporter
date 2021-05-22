@@ -62,8 +62,18 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, 
 	for _, stream := range streams.Data.Streams {
 		log.Debugf("%+v\n", stream)
 		streamLog := log.WithField("title", stream.Title).WithField("User", stream.UserName)
+		follower, err := getFollower(helixClient, stream.UserID)
+		if err != nil {
+			return err
+		}
+		IndexStream := Stream{
+			Stream:        stream,
+			Timestamp:     time.Now(),
+			FollowerCount: follower,
+		}
+		streamLog.Debugf("Follower fetched. Got %v followers.\n", IndexStream.FollowerCount)
 		streamLog.Debugln("Indexing to DB")
-		indexStream, err := streamDB.IndexStream(stream, *esIndex)
+		indexStream, err := streamDB.IndexStream(IndexStream, *esIndex)
 		if err != nil {
 			return err
 		}
@@ -76,6 +86,18 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, 
 	}
 	log.Infof("Stored %v data points in DB\n", stored)
 	return nil
+}
+
+// getFollowerForStreams return the number of follower for a specific userID
+func getFollower(helixClient *helix.Client, userID string) (int, error) {
+	follows, err := helixClient.GetUsersFollows(&helix.UsersFollowsParams{
+		First: 0,
+		ToID:  userID,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return follows.Data.Total, nil
 }
 
 func newHelixClient(clientId string, clientSecret string) *helix.Client {

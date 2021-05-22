@@ -29,9 +29,10 @@ type streamDB struct {
 	*elasticsearch.Client
 }
 
-type timeStream struct {
+type Stream struct {
 	helix.Stream
-	Timestamp time.Time `json:"@timestamp"`
+	FollowerCount int       `json:"follower_count"`
+	Timestamp     time.Time `json:"@timestamp"`
 }
 
 func init() {
@@ -52,11 +53,10 @@ func setIndexSuffix() {
 // This function will add a @timestamp property to the given stream before indexing it.
 // This make it compatible with the elasticsearch data stream model.
 // Year and Month will be appended to index name such as streams-2021-03
-func (s streamDB) IndexStream(stream helix.Stream, index string) (*indexResult, error) {
+func (s streamDB) IndexStream(stream Stream, index string) (*indexResult, error) {
 	index = index + "-" + indexSuffix
 	log.Debugln("Indexing stream to", index)
-	ts := timeStream{stream, time.Now()}
-	body, err := json.Marshal(ts)
+	body, err := json.Marshal(stream)
 	if err != nil {
 		return &indexResult{}, err
 	}

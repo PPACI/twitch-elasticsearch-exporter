@@ -50,6 +50,9 @@
         },
         "viewer_count": {
           "type": "long"
+        },
+        "follower_count": {
+          "type": "long"
         }
       }
     },
