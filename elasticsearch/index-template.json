@@ -1,10 +1,62 @@
 {
-  "index_patterns": ["streams*"],
+  "index_patterns": [
+    "streams*"
+  ],
   "priority": 1,
   "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "game_id": {
+          "type": "keyword"
+        },
+        "game_name": {
+          "type": "keyword"
+        },
+        "id": {
+          "type": "keyword"
+        },
+        "is_mature": {
+          "type": "boolean"
+        },
+        "language": {
+          "type": "keyword"
+        },
+        "started_at": {
+          "type": "date"
+        },
+        "tag_ids": {
+          "type": "keyword"
+        },
+        "thumbnail_url": {
+          "type": "keyword"
+        },
+        "title": {
+          "type": "text"
+        },
+        "type": {
+          "type": "keyword"
+        },
+        "user_id": {
+          "type": "keyword"
+        },
+        "user_login": {
+          "type": "keyword"
+        },
+        "user_name": {
+          "type": "keyword"
+        },
+        "viewer_count": {
+          "type": "long"
+        }
+      }
+    },
     "settings": {
       "number_of_shards": 1,
-      "number_of_replicas": 0
+      "number_of_replicas": 0,
+      "codec": "best_compression"
     }
   }
 }
