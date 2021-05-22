@@ -36,11 +36,12 @@ func main() {
 	log.Debugln("Init Helix Client")
 	helixClient := newHelixClient(*clientId, *clientSecret)
 	log.Debugln("Start Polling Loop")
-	if err := pollStream(helixClient, streamDB, esIndex, *language); err != nil {
-		log.Errorln(err)
-	}
+	pollStreamLoop(helixClient, streamDB, esIndex, *language)
+}
+
+func pollStreamLoop(helixClient *helix.Client, streamDB *streamDB, esIndex *string, language string) {
 	for next := range time.Tick(30 * time.Second) {
-		err := pollStream(helixClient, streamDB, esIndex, *language)
+		err := pollStream(helixClient, streamDB, esIndex, language)
 		if err != nil {
 			log.Errorln(err)
 		}
