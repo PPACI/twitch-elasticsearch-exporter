@@ -31,15 +31,21 @@ func main() {
 	if *verbose {
 		log.SetLevel(log.DebugLevel)
 	}
-	log.Debugln("Init StreamDB")
+	log.Infoln("Init StreamDB")
 	streamDB := newStreamDB(strings.Split(*esUrl, ","))
-	log.Debugln("Init Helix Client")
+	log.Infoln("Init Helix Client")
 	helixClient := newHelixClient(*clientId, *clientSecret)
-	log.Debugln("Start Polling Loop")
+	log.Infoln("Start Polling Loop")
 	pollStreamLoop(helixClient, streamDB, esIndex, *language)
 }
 
 func pollStreamLoop(helixClient *helix.Client, streamDB *streamDB, esIndex *string, language string) {
+	// Force execution now
+	err := pollStream(helixClient, streamDB, esIndex, language)
+	if err != nil {
+		log.Errorln(err)
+	}
+	// Start the real polling loop
 	for next := range time.Tick(30 * time.Second) {
 		err := pollStream(helixClient, streamDB, esIndex, language)
 		if err != nil {
@@ -58,10 +64,15 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, 
 		return err
 	}
 	log.Debugf("Got %v streams\n", len(streams.Data.Streams))
-	stored := 0
+	stored, skipped := 0, 0
 	for _, stream := range streams.Data.Streams {
 		log.Debugf("%+v\n", stream)
 		streamLog := log.WithField("title", stream.Title).WithField("User", stream.UserName)
+		if stream.ViewerCount < 500 {
+			streamLog.Debugf("%v followers is less than the minimum of 500\n", stream.ViewerCount)
+			skipped++
+			continue
+		}
 		follower, err := getFollower(helixClient, stream.UserID)
 		if err != nil {
 			return err
@@ -85,6 +96,7 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, 
 		stored++
 	}
 	log.Infof("Stored %v data points in DB\n", stored)
+	log.Infof("Skipped %v data points due to low viewer count\n", skipped)
 	return nil
 }
 
