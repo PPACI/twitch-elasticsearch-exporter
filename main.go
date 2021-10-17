@@ -2,52 +2,72 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
+	"github.com/caarlos0/env/v6"
 	"github.com/elastic/go-elasticsearch/v7"
 	"github.com/nicklaw5/helix"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2/clientcredentials"
 	"golang.org/x/oauth2/twitch"
-	"os"
-	"strings"
+	"net/http"
 	"time"
 )
 
-func main() {
-	clientId := flag.String("client-id", "", "Twitch helixClient ID")
-	clientSecret := flag.String("client-secret", "", "Twitch helixClient secret")
-	language := flag.String("twitch-language", "fr", "Code of the twitch language to poll like fr, en")
-	esUrl := flag.String("elasticsearch-url", "http://localhost:9200", "Comma separated list of url of elasticsearch")
-	esIndex := flag.String("elasticsearch-index", "streams", "Elasticsearch index to use")
-	verbose := flag.Bool("verbose", false, "Enable verbose mode")
-	flag.Parse()
-	if *clientId == "" || *clientSecret == "" {
-		fmt.Println("Twitch Surveillance")
-		fmt.Println("Usage:")
-		flag.PrintDefaults()
-		os.Exit(1)
+type config struct {
+	HelixClientId     string `env:"HELIX_CLIENT_ID"`
+	HelixClientSecret string `env:"HELIX_CLIENT_SECRET"`
+	TwitchLanguage    string `env:"TWITCH_LANGUAGE" envDefault:"fr"`
+	EsAddonUri        string `env:"ES_ADDON_URI"`
+	EsAddonUser       string `env:"ES_ADDON_USER"`
+	EsAddonPassword   string `env:"ES_ADDON_PASSWORD"`
+	EsIndexPrefix     string `env:"ES_INDEX_PREFIX" envDefault:"streams"`
+	LogVerbose        bool   `env:"LOG_VERBOSE" envDefault:"false"`
+	HttpPort          int    `env:"PORT" envDefault:"8080"`
+}
+
+var c config
+
+func init() {
+	opts := env.Options{RequiredIfNoDef: true}
+	if err := env.Parse(&c, opts); err != nil {
+		log.Fatal(err)
 	}
-	if *verbose {
+}
+
+func main() {
+	if c.LogVerbose {
 		log.SetLevel(log.DebugLevel)
 	}
 	log.Infoln("Init StreamDB")
-	streamDB := newStreamDB(strings.Split(*esUrl, ","))
+	streamDB := newStreamDB(c)
 	log.Infoln("Init Helix Client")
-	helixClient := newHelixClient(*clientId, *clientSecret)
+	helixClient := newHelixClient(c)
 	log.Infoln("Start Polling Loop")
-	pollStreamLoop(helixClient, streamDB, esIndex, *language)
+	go pollStreamLoop(helixClient, streamDB, c)
+
+	//Handling healthcheck
+	http.HandleFunc("/health", func(writer http.ResponseWriter, request *http.Request) {
+		_, err := writer.Write([]byte("OK"))
+		if err != nil {
+			log.Fatal(err)
+		}
+	})
+	log.Infof("Server listening on localhost:%d", c.HttpPort)
+	err := http.ListenAndServe(fmt.Sprintf(":%d", c.HttpPort), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
-func pollStreamLoop(helixClient *helix.Client, streamDB *streamDB, esIndex *string, language string) {
+func pollStreamLoop(helixClient *helix.Client, streamDB *streamDB, c config) {
 	// Force execution now
-	err := pollStream(helixClient, streamDB, esIndex, language)
+	err := pollStream(helixClient, streamDB, c.EsIndexPrefix, c.TwitchLanguage)
 	if err != nil {
 		log.Errorln(err)
 	}
 	// Start the real polling loop
 	for next := range time.Tick(30 * time.Second) {
-		err := pollStream(helixClient, streamDB, esIndex, language)
+		err := pollStream(helixClient, streamDB, c.EsIndexPrefix, c.TwitchLanguage)
 		if err != nil {
 			log.Errorln(err)
 		}
@@ -55,7 +75,7 @@ func pollStreamLoop(helixClient *helix.Client, streamDB *streamDB, esIndex *stri
 	}
 }
 
-func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, language string) error {
+func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex string, language string) error {
 	streams, err := helixClient.GetStreams(&helix.StreamsParams{First: 100, Language: []string{language}})
 	if err != nil {
 		return err
@@ -84,7 +104,7 @@ func pollStream(helixClient *helix.Client, streamDB *streamDB, esIndex *string, 
 		}
 		streamLog.Debugf("Follower fetched. Got %v followers.\n", IndexStream.FollowerCount)
 		streamLog.Debugln("Indexing to DB")
-		indexStream, err := streamDB.IndexStream(IndexStream, *esIndex)
+		indexStream, err := streamDB.IndexStream(IndexStream, esIndex)
 		if err != nil {
 			return err
 		}
@@ -112,10 +132,10 @@ func getFollower(helixClient *helix.Client, userID string) (int, error) {
 	return follows.Data.Total, nil
 }
 
-func newHelixClient(clientId string, clientSecret string) *helix.Client {
+func newHelixClient(c config) *helix.Client {
 	oauth2Config := &clientcredentials.Config{
-		ClientID:     clientId,
-		ClientSecret: clientSecret,
+		ClientID:     c.HelixClientId,
+		ClientSecret: c.HelixClientSecret,
 		TokenURL:     twitch.Endpoint.TokenURL,
 	}
 	oauthClient := oauth2Config.Client(context.Background())
@@ -129,9 +149,11 @@ func newHelixClient(clientId string, clientSecret string) *helix.Client {
 	return client
 }
 
-func newStreamDB(esUrl []string) *streamDB {
+func newStreamDB(c config) *streamDB {
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
-		Addresses: esUrl,
+		Addresses: []string{c.EsAddonUri},
+		Username:  c.EsAddonUser,
+		Password:  c.EsAddonPassword,
 	})
 	if err != nil {
 		log.Fatalln(err)
